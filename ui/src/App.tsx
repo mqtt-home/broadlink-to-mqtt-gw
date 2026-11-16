@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Device } from "./api";
+import { api, Device } from "./api";
 import { CommandKey } from "./CommandKey";
+import { FindDevices } from "./FindDevices";
 import { useDevices } from "./hooks";
 import { LearnPanel } from "./LearnPanel";
 
@@ -34,6 +35,7 @@ export function App() {
         {devices?.map((d) => (
           <DeviceSection key={d.name} device={d} refresh={refresh} notify={notify} />
         ))}
+        {devices !== null && <FindDevices refresh={refresh} notify={notify} />}
       </main>
 
       <div className="notice-area" aria-live="polite">
@@ -58,6 +60,17 @@ function DeviceSection({
 }) {
   const [editMode, setEditMode] = useState(false);
   const [repeat, setRepeat] = useState(1);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  async function removeDevice() {
+    try {
+      await api.removeDevice(device.name);
+      notify(`„${device.name}“ entfernt.`);
+      await refresh();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "Entfernen fehlgeschlagen", "error");
+    }
+  }
 
   return (
     <section className="device" aria-labelledby={`dev-${device.name}`}>
@@ -112,6 +125,20 @@ function DeviceSection({
             />
           ))}
         </ul>
+      )}
+
+      {editMode && device.source === "ui" && (
+        <div className="actions remove">
+          {confirmRemove ? (
+            <>
+              <span className="muted">Gerät samt gelernten Tasten entfernen?</span>
+              <button className="btn danger small" onClick={removeDevice}>Ja, entfernen</button>
+              <button className="btn quiet small" onClick={() => setConfirmRemove(false)}>Abbrechen</button>
+            </>
+          ) : (
+            <button className="btn quiet small" onClick={() => setConfirmRemove(true)}>Gerät entfernen</button>
+          )}
+        </div>
       )}
 
       {device.last_command && (

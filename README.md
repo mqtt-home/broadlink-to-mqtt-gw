@@ -101,6 +101,21 @@ changing requests require `Content-Type: application/json`, and no CORS
 headers are sent, so other websites cannot trigger commands via your browser.
 Set `"ui": {"enabled": false}` to switch it off.
 
+### Discovery
+
+The UI section "Geräte im Netz" finds Broadlink devices in the LAN (UDP hello
+to the broadcast addresses and to every host of `discovery.networks`) and adds
+them with one click. Added devices are stored in `devices.json` next to the data
+file and can be removed again in the UI (edit mode); devices from the config
+file are read-only. In a container broadcasts do not reach the LAN, so list your
+network:
+
+```json
+"discovery": { "networks": ["10.0.10.0/24"] }
+```
+
+CIDRs up to a /22 are allowed.
+
 ## Home Assistant auto-discovery
 
 On the first successful poll the bridge announces, grouped under one device:

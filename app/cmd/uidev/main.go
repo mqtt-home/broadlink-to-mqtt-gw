@@ -78,6 +78,21 @@ func main() {
 	if *device == "" {
 		m = bridge.NewManagerWith(cfg, noMQTT{}, disc, st, map[string]bridge.Remote{"wohnzimmer": simRemote{}})
 	}
+	if *device == "" {
+		// Simulated LAN: one known remote and two that can be added.
+		m.SetDiscoverFunc(func(ctx context.Context, _ broadlink.DiscoverOptions) ([]broadlink.Found, error) {
+			select {
+			case <-time.After(1200 * time.Millisecond):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return []broadlink.Found{
+				{Host: "sim", Info: broadlink.Info{Model: "RM mini 3", MAC: "c8:f7:42:63:19:97", Name: "Wohnzimmer"}, Supported: true},
+				{Host: "192.0.2.21", Info: broadlink.Info{Model: "RM4 mini", MAC: "c8:f7:42:83:21:0f", Name: "Schlafzimmer"}, Supported: true},
+				{Host: "192.0.2.30", Info: broadlink.Info{Model: "Broadlink 0x5f1a", MAC: "34:ea:34:00:00:01"}},
+			}, nil
+		})
+	}
 	go m.Run(context.Background())
 
 	log.Printf("uidev listening on http://%s (ui built: %v)", *addr, web.FS() != nil)

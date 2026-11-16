@@ -170,3 +170,16 @@ label { display: block; font-size: 0.9rem; font-weight: 600; margin-bottom: 4px;
   .wave-play { animation: none; stroke-dashoffset: 0; }
   .notice, .key-press { animation: none; transition: none; }
 }
+
+/* device discovery */
+.find { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); }
+.find h2 { font-size: 1.15rem; }
+.find-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 20px; align-items: center; }
+.found { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
+.found-row {
+  display: flex; flex-wrap: wrap; gap: 10px 20px; justify-content: space-between; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px;
+}
+.found-row .add { flex: 0 1 340px; }
+.remove { align-items: center; }
+code { font-family: var(--mono); font-size: 0.9em; }

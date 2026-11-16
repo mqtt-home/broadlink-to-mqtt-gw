@@ -26,15 +26,21 @@ type Store struct {
 	path string // empty: memory only
 	mu   sync.RWMutex
 	data data
+
+	devMu   sync.Mutex
+	devices map[string]string // devices added in the UI: name -> host
 }
 
 // NewMemory returns a store that is never written to disk.
-func NewMemory() *Store { return &Store{data: data{}} }
+func NewMemory() *Store { return &Store{data: data{}, devices: map[string]string{}} }
 
 // Open loads the file at path; a missing file yields an empty store that
 // creates the file on the first change.
 func Open(path string) (*Store, error) {
-	s := &Store{path: path, data: data{}}
+	s := &Store{path: path, data: data{}, devices: map[string]string{}}
+	if err := s.loadDevices(); err != nil {
+		return nil, err
+	}
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
@@ -154,16 +160,25 @@ func (s *Store) save(d data) error {
 			enc[dev][n] = base64.StdEncoding.EncodeToString(c)
 		}
 	}
-	raw, err := json.MarshalIndent(enc, "", "  ")
+	return writeJSONAtomic(s.path, enc)
+}
+
+// writeJSONAtomic writes v to path through a temp file + rename (mode 0600).
+// An empty path means memory only.
+func writeJSONAtomic(path string, v any) error {
+	if path == "" {
+		return nil
+	}
+	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".commands-*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".store-*.tmp")
 	if err != nil {
-		return fmt.Errorf("write %s: %w", s.path, err)
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err := tmp.Write(append(raw, '\n')); err != nil {
@@ -176,5 +191,5 @@ func (s *Store) save(d data) error {
 	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), s.path)
+	return os.Rename(tmp.Name(), path)
 }

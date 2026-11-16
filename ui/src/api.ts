@@ -16,9 +16,19 @@ export type Learn = {
   timeout_seconds?: number;
 };
 
+export type Found = {
+  host: string;
+  model: string;
+  name?: string;
+  mac: string;
+  supported: boolean;
+  added?: string; // bridge device name if already known
+};
+
 export type Device = {
   name: string;
   host: string;
+  source: "config" | "ui";
   model?: string;
   mac?: string;
   online: boolean;
@@ -54,8 +64,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 // The API reports errors in English; map the ones users can act on.
 function translate(msg: string | undefined, status: number): string {
   if (!msg) return `Fehler ${status}`;
+  if (msg.includes("the device is defined")) return "Dieses Gerät steht in der Config-Datei und lässt sich hier nicht entfernen.";
   if (msg.includes("config file")) return "Dieser Befehl steht in der Config-Datei und lässt sich hier nicht ändern.";
   if (msg.includes("learning in progress") || msg.includes("busy")) return "Das Gerät lernt gerade. Bitte warten.";
+  if (msg.includes("is already device")) return "Dieses Gerät ist schon eingebunden.";
   if (msg.includes("already exists")) return "Dieser Name ist schon vergeben.";
   if (msg.includes("command not found") || status === 404) return "Befehl oder Gerät nicht gefunden.";
   if (msg.includes("timeout")) return "Keine Antwort vom Gerät (Timeout).";
@@ -67,6 +79,9 @@ const cmd = (d: string, c: string) => `${dev(d)}/commands/${encodeURIComponent(c
 
 export const api = {
   devices: () => request<Device[]>("GET", "/api/devices"),
+  discover: () => request<Found[]>("POST", "/api/discover"),
+  addDevice: (name: string, host: string) => request("POST", "/api/devices", { name, host }),
+  removeDevice: (d: string) => request("DELETE", dev(d)),
   startLearn: (d: string, hint: string) => request<Learn>("POST", `${dev(d)}/learn`, { hint }),
   send: (d: string, c: string, repeat: number) => request("POST", `${cmd(d, c)}/send`, { repeat }),
   sendCode: (d: string, code: string, repeat = 1) => request("POST", `${dev(d)}/send`, { code, repeat }),

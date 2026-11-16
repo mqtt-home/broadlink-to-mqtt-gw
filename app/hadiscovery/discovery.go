@@ -62,6 +62,16 @@ func (p *Publisher) Publish(deviceName string, info broadlink.Info, commands []s
 	p.topics[deviceName] = current
 }
 
+// Forget clears the discovery topics of one device (it was removed).
+func (p *Publisher) Forget(deviceName string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for topic := range p.topics[deviceName] {
+		p.pub(topic, []byte(""), true)
+	}
+	delete(p.topics, deviceName)
+}
+
 // Cleanup clears every discovery topic ever published by this Publisher
 // (empty retained payload → HA removes the entity). Called from the graceful
 // shutdown path before the MQTT client disconnects.

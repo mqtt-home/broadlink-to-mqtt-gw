@@ -273,14 +273,7 @@ func (c *Client) ensureAuth(ctx context.Context) error {
 
 // doHello sends the unicast discovery packet and learns devtype and MAC.
 func (c *Client) doHello(ctx context.Context) error {
-	pkt := make([]byte, 0x30)
-	now := time.Now()
-	_, offset := now.Zone()
-	putDatetime(pkt[0x08:0x14], now, offset/3600)
-	pkt[0x26] = 6
-	putChecksum(pkt, 0x20)
-
-	resp, err := c.roundtrip(ctx, pkt)
+	resp, err := c.roundtrip(ctx, helloPacket())
 	if err != nil {
 		return fmt.Errorf("hello: %w", err)
 	}
@@ -288,14 +281,24 @@ func (c *Client) doHello(ctx context.Context) error {
 		return errors.New("hello: short response")
 	}
 
-	c.devtype = binary.LittleEndian.Uint16(resp[0x34:0x36])
-	c.mac = append([]byte(nil), resp[0x3A:0x40]...)
-	spec, known := specs[c.devtype]
-	if !known {
-		spec = deviceSpec{model: fmt.Sprintf("Broadlink 0x%04x", c.devtype), framed: true}
-	}
+	devtype, mac, spec, info := parseHello(resp)
+	c.devtype = devtype
+	c.mac = mac
 	c.framed = spec.framed
+	c.info = info
+	c.hello = true
+	return nil
+}
 
+// parseHello extracts devtype, raw MAC, spec and Info from a hello response
+// (at least 0x40 bytes).
+func parseHello(resp []byte) (uint16, []byte, deviceSpec, Info) {
+	devtype := binary.LittleEndian.Uint16(resp[0x34:0x36])
+	mac := append([]byte(nil), resp[0x3A:0x40]...)
+	spec, known := specs[devtype]
+	if !known {
+		spec = deviceSpec{model: fmt.Sprintf("Broadlink 0x%04x", devtype), framed: true}
+	}
 	name := resp[0x40:]
 	for i, b := range name {
 		if b == 0 {
@@ -303,15 +306,23 @@ func (c *Client) doHello(ctx context.Context) error {
 			break
 		}
 	}
-	c.info = Info{
-		DevType: c.devtype,
+	return devtype, mac, spec, Info{
+		DevType: devtype,
 		Model:   spec.model,
 		Name:    string(name),
 		Locked:  len(resp) > 0x7F && resp[0x7F] != 0,
-		MAC:     formatMAC(c.mac),
+		MAC:     formatMAC(mac),
 	}
-	c.hello = true
-	return nil
+}
+
+func helloPacket() []byte {
+	pkt := make([]byte, 0x30)
+	now := time.Now()
+	_, offset := now.Zone()
+	putDatetime(pkt[0x08:0x14], now, offset/3600)
+	pkt[0x26] = 6
+	putChecksum(pkt, 0x20)
+	return pkt
 }
 
 func formatMAC(raw []byte) string {

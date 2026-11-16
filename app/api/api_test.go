@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +36,11 @@ func (f *fakeBackend) SaveCommand(d, n string, c []byte) error {
 }
 func (f *fakeBackend) RenameCommand(d, a, b string) error { return f.rec("rename %s %s %s", d, a, b) }
 func (f *fakeBackend) DeleteCommand(d, n string) error    { return f.rec("delete %s %s", d, n) }
+func (f *fakeBackend) Discover(context.Context) ([]bridge.FoundView, error) {
+	return []bridge.FoundView{{Host: "10.0.0.5", Model: "RM mini 3", Supported: true}}, f.rec("discover")
+}
+func (f *fakeBackend) AddDevice(n, h string) error { return f.rec("add %s %s", n, h) }
+func (f *fakeBackend) RemoveDevice(n string) error { return f.rec("remove %s", n) }
 
 func do(h http.Handler, method, path, body, ctype string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -67,6 +73,10 @@ func TestRoutes(t *testing.T) {
 		{"PUT", "/api/devices/rm/commands/power", `{"code":"!!"}`, 400, ""},
 		{"PUT", "/api/devices/rm/commands/power", `{"nope":1}`, 400, ""},
 		{"PUT", "/api/devices/rm/commands/power", `{bad`, 400, ""},
+		{"POST", "/api/discover", `{}`, 200, "discover"},
+		{"POST", "/api/devices", `{"name":"kind2","host":"10.0.0.5"}`, 201, "add kind2 10.0.0.5"},
+		{"POST", "/api/devices", `{"nope":1}`, 400, ""},
+		{"DELETE", "/api/devices/kind2", "", 200, "remove kind2"},
 		{"GET", "/api/nothing", "", 404, ""},
 	}
 	for _, tc := range cases {

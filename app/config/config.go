@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,6 +31,18 @@ func ValidateCommandName(name string) error {
 	}
 	if _, reserved := ReservedCommands[name]; reserved {
 		return fmt.Errorf("command name %q is reserved", name)
+	}
+	return nil
+}
+
+// ValidateDeviceName reports whether name can be used as a device name (it
+// becomes part of the MQTT topics and the Home Assistant object ids).
+func ValidateDeviceName(name string) error {
+	if !commandNameRe.MatchString(name) {
+		return fmt.Errorf("device name %q may only contain letters, digits, '_' and '-'", name)
+	}
+	if name == "bridge" {
+		return fmt.Errorf("device name %q is reserved", name)
 	}
 	return nil
 }
@@ -75,6 +88,14 @@ type UIConfig struct {
 	Listen  string `json:"listen,omitempty"`
 }
 
+// DiscoveryConfig controls the LAN discovery of Broadlink devices.
+type DiscoveryConfig struct {
+	// Networks are IPv4 CIDRs (e.g. "10.0.10.0/24") that are probed host by
+	// host. Required when the bridge runs in a container, where broadcasts
+	// do not reach the LAN.
+	Networks []string `json:"networks,omitempty"`
+}
+
 // Config is the top-level configuration for the broadlink-to-mqtt gateway.
 type Config struct {
 	MQTT                   MQTTConfig `json:"mqtt"`
@@ -85,7 +106,9 @@ type Config struct {
 	// commands.json next to the config file; must be writable.
 	DataFile string   `json:"data-file,omitempty"`
 	UI       UIConfig `json:"ui"`
-	LogLevel string   `json:"loglevel,omitempty"`
+	// Discovery configures the "find devices" function of the web UI.
+	Discovery DiscoveryConfig `json:"discovery"`
+	LogLevel  string          `json:"loglevel,omitempty"`
 }
 
 // ApplyDefaults fills in unset optional fields with their documented defaults.
@@ -175,6 +198,12 @@ func validate(c *Config) error {
 	}
 	if len(c.Devices) == 0 {
 		return errors.New("required field missing: devices (must contain at least one entry)")
+	}
+
+	for _, n := range c.Discovery.Networks {
+		if p, err := netip.ParsePrefix(n); err != nil || !p.Addr().Is4() {
+			return fmt.Errorf("discovery.networks: %q is not an IPv4 CIDR like 10.0.10.0/24", n)
+		}
 	}
 
 	seen := make(map[string]struct{}, len(c.Devices))

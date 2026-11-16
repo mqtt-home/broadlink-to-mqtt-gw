@@ -31,6 +31,9 @@ const repeatGap = 100 * time.Millisecond
 type Device struct {
 	Cfg    config.Device
 	Client Remote
+	Source string // SourceConfig or SourceUI
+
+	cancel context.CancelFunc // stops the poll loop; set when started
 
 	learning atomic.Bool
 
@@ -61,6 +64,12 @@ type Manager struct {
 
 	mqtt      MQTTClient
 	discovery *hadiscovery.Publisher
+
+	runCtx context.Context // set by Run; devices added later start under it
+	wg     sync.WaitGroup
+
+	// discover finds Broadlink devices in the LAN (replaced in tests).
+	discover func(context.Context, broadlink.DiscoverOptions) ([]broadlink.Found, error)
 }
 
 // NewManager builds a Manager with a real broadlink.Client per device. st
@@ -78,15 +87,45 @@ func NewManager(cfg config.Config, mqttClient MQTTClient, discovery *hadiscovery
 		devices:      make(map[string]*Device, len(cfg.Devices)),
 		mqtt:         mqttClient,
 		discovery:    discovery,
+		discover:     broadlink.Discover,
 	}
 	for _, d := range cfg.Devices {
-		m.order = append(m.order, d.Name)
-		m.devices[d.Name] = &Device{
-			Cfg:    d,
-			Client: &broadlink.Client{Host: d.Host},
+		m.register(d)
+	}
+	// Devices added in the UI earlier; the config wins on a name clash.
+	for _, name := range st.DeviceNames() {
+		if _, taken := m.devices[name]; taken {
+			logger.Warn("Ignoring UI device whose name is also in the config", "device", name)
+			continue
 		}
+		m.register(config.Device{Name: name, Host: st.Devices()[name]}, SourceUI)
 	}
 	return m
+}
+
+// register adds a device (not yet started) and returns it. The source
+// defaults to SourceConfig.
+func (m *Manager) register(cfg config.Device, source ...string) *Device {
+	d := &Device{Cfg: cfg, Client: &broadlink.Client{Host: cfg.Host}, Source: SourceConfig}
+	if len(source) > 0 {
+		d.Source = source[0]
+	}
+	m.mu.Lock()
+	m.devices[cfg.Name] = d
+	m.order = append(m.order, cfg.Name)
+	m.mu.Unlock()
+	return d
+}
+
+// start launches the poll loop of d under the manager's context.
+func (m *Manager) start(d *Device) {
+	ctx, cancel := context.WithCancel(m.runCtx)
+	d.cancel = cancel
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		m.runDevice(ctx, d)
+	}()
 }
 
 // NewManagerWith is the test-facing constructor that lets a suite inject
@@ -109,15 +148,15 @@ func (m *Manager) Run(ctx context.Context) {
 		m.mqtt.Subscribe(fmt.Sprintf("%s/+/%s", m.basePrefix, action), m.handleMessage)
 	}
 
-	var wg sync.WaitGroup
+	m.mu.Lock()
+	m.runCtx = ctx
 	for _, d := range m.devices {
-		wg.Add(1)
-		go func(d *Device) {
-			defer wg.Done()
-			m.runDevice(ctx, d)
-		}(d)
+		m.start(d)
 	}
-	wg.Wait()
+	m.mu.Unlock()
+
+	<-ctx.Done()
+	m.wg.Wait()
 }
 
 // runDevice is the per-device health-check loop. Backoff on error is
@@ -140,6 +179,9 @@ func (m *Manager) runDevice(ctx context.Context, d *Device) {
 		}
 
 		if err := m.pollOnce(ctx, d); err != nil {
+			if ctx.Err() != nil {
+				return // stopped (shutdown or device removed): stay silent
+			}
 			m.publishAvailability(d, false)
 			logger.Warn("Poll failed", "device", d.Cfg.Name, "error", err, "backoff", backoff)
 			timer.Reset(backoff)

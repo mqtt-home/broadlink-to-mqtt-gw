@@ -8,6 +8,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -31,6 +32,9 @@ type Backend interface {
 	SaveCommand(device, name string, code []byte) error
 	RenameCommand(device, from, to string) error
 	DeleteCommand(device, name string) error
+	Discover(ctx context.Context) ([]bridge.FoundView, error)
+	AddDevice(name, host string) error
+	RemoveDevice(name string) error
 }
 
 const maxBody = 64 << 10
@@ -40,6 +44,9 @@ func New(b Backend, ui fs.FS) http.Handler {
 	s := &server{b: b}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/devices", s.listDevices)
+	mux.HandleFunc("POST /api/discover", s.json(s.discover))
+	mux.HandleFunc("POST /api/devices", s.json(s.addDevice))
+	mux.HandleFunc("DELETE /api/devices/{device}", s.removeDevice)
 	mux.HandleFunc("POST /api/devices/{device}/learn", s.json(s.startLearn))
 	mux.HandleFunc("GET /api/devices/{device}/learn", s.learnStatus)
 	mux.HandleFunc("POST /api/devices/{device}/send", s.json(s.sendRaw))
@@ -81,6 +88,39 @@ func decode(r *http.Request, v any) error {
 
 func (s *server) listDevices(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.b.ListDevices())
+}
+
+func (s *server) discover(w http.ResponseWriter, r *http.Request) {
+	found, err := s.b.Discover(r.Context())
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, found)
+}
+
+func (s *server) addDevice(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+		Host string `json:"host"`
+	}
+	if err := decode(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.b.AddDevice(body.Name, body.Host); err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
+}
+
+func (s *server) removeDevice(w http.ResponseWriter, r *http.Request) {
+	if err := s.b.RemoveDevice(r.PathValue("device")); err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *server) startLearn(w http.ResponseWriter, r *http.Request) {

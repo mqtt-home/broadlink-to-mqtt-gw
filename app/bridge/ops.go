@@ -55,6 +55,7 @@ type LearnView struct {
 type DeviceView struct {
 	Name        string        `json:"name"`
 	Host        string        `json:"host"`
+	Source      string        `json:"source"` // config | ui (only ui devices can be removed)
 	Model       string        `json:"model,omitempty"`
 	MAC         string        `json:"mac,omitempty"`
 	Online      bool          `json:"online"`
@@ -123,15 +124,18 @@ func (m *Manager) refreshDiscovery(d *Device) {
 
 // ListDevices returns a snapshot of all devices in config order.
 func (m *Manager) ListDevices() []DeviceView {
-	out := make([]DeviceView, 0, len(m.order))
-	for _, name := range m.order {
+	m.mu.RLock()
+	order := append([]string(nil), m.order...)
+	m.mu.RUnlock()
+	out := make([]DeviceView, 0, len(order))
+	for _, name := range order {
 		d, err := m.device(name)
 		if err != nil {
 			continue
 		}
 		d.mu.Lock()
 		v := DeviceView{
-			Name: name, Host: d.Cfg.Host, Model: d.info.Model, MAC: d.info.MAC,
+			Name: name, Host: d.Cfg.Host, Source: d.Source, Model: d.info.Model, MAC: d.info.MAC,
 			Online: d.available, Locked: d.locked,
 			LastCommand: d.lastCommand, LastSent: d.lastSent,
 			Learn: d.learn,

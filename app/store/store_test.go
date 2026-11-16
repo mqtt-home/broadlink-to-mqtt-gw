@@ -90,3 +90,33 @@ func TestCorruptFile(t *testing.T) {
 		t.Error("expected JSON error")
 	}
 }
+
+func TestDevicesPersistAndDeleteWithCommands(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "commands.json")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetDevice("kind2", "10.0.0.2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Set("kind2", "an", []byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s2.Devices(); len(got) != 1 || got["kind2"] != "10.0.0.2" {
+		t.Fatalf("reloaded devices = %v", got)
+	}
+	if err := s2.DeleteDevice("kind2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s2.Get("kind2", "an"); ok || len(s2.Devices()) != 0 {
+		t.Error("device or its commands survived deletion")
+	}
+	if err := s2.DeleteDevice("kind2"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("second delete = %v", err)
+	}
+}
