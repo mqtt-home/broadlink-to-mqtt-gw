@@ -63,6 +63,22 @@ State payload:
 `repeat` is 1–10 (default 1). Unknown commands and invalid payloads are
 logged and dropped. Commands are ignored while a learning session runs.
 
+### Air conditioners
+
+Split units send their whole state with every key, so learn one command per
+setpoint: `16`, `17`, … `25` (any numbers) plus `aus` for off. Then `/set`
+also accepts what a thermostat sends:
+
+| Payload                  | Effect                                                              |
+|--------------------------|---------------------------------------------------------------------|
+| `{"temperature": 21.5}`  | sends the learned setpoint closest to the value (so 16–25 is the range) |
+| `{"mode": "off"}`        | sends `aus`                                                         |
+| `{"mode": "heat"}` (also `cool`, `auto`) | sends the last setpoint again (22 if none yet)       |
+
+A new setpoint while the unit is off is only remembered. The state topic
+carries `"temperature"` (last setpoint) and `"mode": "off"` while off. The unit
+reports nothing back, so this is the last command sent, not the real state.
+
 ### Learning codes
 
 Publish anything to `{prefix}/{name}/learn` (optionally a command name as a

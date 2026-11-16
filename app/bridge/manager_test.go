@@ -101,7 +101,7 @@ func TestPollPublishesAvailabilityStateAndDiscovery(t *testing.T) {
 	if got := mq.on("bl/rm/available"); len(got) != 1 || got[0].payload != "online" {
 		t.Errorf("availability = %+v", got)
 	}
-	if got := mq.on("bl/rm/state"); len(got) != 1 || got[0].payload != `{"locked":false,"last_command":null,"last_sent":null}` {
+	if got := mq.on("bl/rm/state"); len(got) != 1 || got[0].payload != `{"locked":false,"last_command":null,"last_sent":null,"temperature":null}` {
 		t.Errorf("state = %+v", got)
 	}
 	for _, topic := range []string{

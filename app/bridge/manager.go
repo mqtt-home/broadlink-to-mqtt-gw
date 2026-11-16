@@ -44,6 +44,8 @@ type Device struct {
 	lastStateJSON    []byte
 	lastCommand      *string
 	lastSent         *string
+	targetTemp       *float64 // last known setpoint (climate commands)
+	off              bool     // last command was OffCommand
 	locked           bool
 	available        bool
 	availableInitial bool
@@ -236,6 +238,8 @@ func (m *Manager) publishState(d *Device, force bool) {
 		Locked:      d.locked,
 		LastCommand: d.lastCommand,
 		LastSent:    d.lastSent,
+		Mode:        modeOf(d.off),
+		Temperature: d.targetTemp,
 	})
 	if err != nil {
 		d.mu.Unlock()
@@ -358,4 +362,12 @@ func parseTopic(prefix, topic string) (string, string, bool) {
 		return "", "", false
 	}
 	return parts[0], parts[1], true
+}
+
+// modeOf is the state-topic mode: only "off" is known, the unit does not report anything back.
+func modeOf(off bool) string {
+	if off {
+		return "off"
+	}
+	return ""
 }

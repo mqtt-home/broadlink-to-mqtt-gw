@@ -159,6 +159,17 @@ func (m *Manager) Send(deviceName string, cmd SetCommand) error {
 	if err != nil {
 		return err
 	}
+	if cmd.Mode != "" || cmd.Temp != nil {
+		name, skip, err := m.resolveClimate(d, cmd)
+		if err != nil {
+			return err
+		}
+		if skip {
+			m.publishState(d, true)
+			return nil
+		}
+		cmd = SetCommand{Name: name, Repeat: max(cmd.Repeat, 1)}
+	}
 	code, label := cmd.Code, "(raw code)"
 	if cmd.Name != "" {
 		c, _, ok := m.lookup(d, cmd.Name)
@@ -194,6 +205,7 @@ func (m *Manager) Send(deviceName string, cmd SetCommand) error {
 	d.mu.Lock()
 	d.lastCommand = &label
 	d.lastSent = &now
+	d.recordClimate(label)
 	d.mu.Unlock()
 	m.publishState(d, true)
 	return nil
