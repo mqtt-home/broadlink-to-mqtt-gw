@@ -1,0 +1,8 @@
+/app/bl2mqtt
+/app/coverage.out
+/production/config/config.json
+.venv/
+.DS_Store
+node_modules/
+/app/web/dist/*
+!/app/web/dist/.gitkeep

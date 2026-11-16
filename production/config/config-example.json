@@ -1,0 +1,24 @@
+{
+    "mqtt": {
+        "url": "tcp://mosquitto:1883",
+        "username": "mosquitto",
+        "password": "${MQTT_PASSWORD}",
+        "topic": "broadlink",
+        "retain": true,
+        "qos": 1
+    },
+    "polling-interval-seconds": 30,
+    "learn-timeout-seconds": 30,
+    "data-file": "/data/commands.json",
+    "ui": { "enabled": true, "listen": ":8080" },
+    "devices": [
+        {
+            "host": "10.0.10.211",
+            "name": "rm-mini",
+            "commands": {
+                "tv_power": "JgBQAAABKZITExM3EhMTExMTExMTExMUEhMTExMTNxM3EzcTNxM3EzcTNxM3ExMTExMTExMTExMTExMTExMTNxM3EzcTNxM3EzcTNxM3EwAF"
+            }
+        }
+    ],
+    "loglevel": "info"
+}

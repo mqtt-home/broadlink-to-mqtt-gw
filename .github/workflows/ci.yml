@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install
+        working-directory: ui
+        run: npm ci
+
+      - name: Test
+        working-directory: ui
+        run: npm test
+
+      - name: Typecheck and build
+        working-directory: ui
+        run: npm run build
+
+      # The Go job embeds this build, so it is shared as an artifact.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: app/web/dist
+          include-hidden-files: true
+          retention-days: 7
+
+  go:
+    needs: ui
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          check-latest: true
+          cache-dependency-path: app/go.sum
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: app/web/dist
+
+      - name: Vet
+        working-directory: app
+        run: go vet ./...
+
+      - name: Test
+        working-directory: app
+        run: go test -race -cover ./...
+
+      - name: Build (with embedded UI)
+        working-directory: app
+        run: |
+          go build -o bl2mqtt .
+          test -f web/dist/index.html
+
+      - name: golangci-lint
+        working-directory: app
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...
+
+  docker:
+    needs: [ui, go]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image (no push)
+        run: docker build -t broadlink-to-mqtt-gw:ci .

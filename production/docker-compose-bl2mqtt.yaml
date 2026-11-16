@@ -1,0 +1,20 @@
+# Needs ./config/bl2mqtt/config.json and MQTT_PASSWORD in the compose env.
+# The container must reach the remote's IP via UDP/80 (no --net=host needed:
+# the device IP is static in the config). The web UI has no login — publish
+# port 8080 only on a trusted network or behind a reverse proxy.
+bl2mqtt:
+  build: ./broadlink-mqtt-bridge       # repository root (contains the Dockerfile)
+  container_name: bl2mqtt
+  volumes:
+    - ./config/bl2mqtt/config.json:/var/lib/bl2mqtt/config.json:ro
+    - bl2mqtt-data:/data                # commands learned in the web UI
+  environment:
+    - MQTT_PASSWORD=${MQTT_PASSWORD}
+  ports:
+    - "8080:8080"
+  networks: [mosquitto]
+  restart: always
+
+# top-level of your compose file:
+# volumes:
+#   bl2mqtt-data:
