@@ -19,8 +19,9 @@ func newDeviceTestManager(t *testing.T) (*Manager, *fakeMQTT, string) {
 		t.Fatal(err)
 	}
 	cfg := config.Config{
-		MQTT:    config.MQTTConfig{Topic: "broadlink"},
-		Devices: []config.Device{{Name: "rm", Host: "10.0.0.1"}},
+		MQTT:      config.MQTTConfig{Topic: "broadlink"},
+		Devices:   []config.Device{{Name: "rm", Host: "10.0.0.1"}},
+		Discovery: config.DiscoveryConfig{Networks: []string{"10.0.0.0/24"}},
 	}
 	config.ApplyDefaults(&cfg)
 	mq := &fakeMQTT{}
@@ -79,13 +80,17 @@ func TestAddDeviceRejects(t *testing.T) {
 		name, host string
 		want       error
 	}{
-		{"rm", "10.0.0.9", ErrExists},       // name taken
-		{"other", "10.0.0.1", ErrExists},    // host taken
-		{"other", "10.0.0.1:80", ErrExists}, // host taken, with port
-		{"a/b", "10.0.0.9", ErrInvalid},     // bad name
-		{"bridge", "10.0.0.9", ErrInvalid},  // reserved
-		{"ok", "", ErrInvalid},              // no host
-		{"ok", "10.0.0.9 x", ErrInvalid},    // bad host
+		{"rm", "10.0.0.9", ErrExists},            // name taken
+		{"other", "10.0.0.1", ErrExists},         // host taken
+		{"other", "10.0.0.1:80", ErrInvalid},     // port not allowed
+		{"other", "example.org", ErrInvalid},     // hostname not allowed
+		{"other", "127.0.0.1", ErrInvalid},       // loopback
+		{"other", "169.254.169.254", ErrInvalid}, // link-local / metadata
+		{"other", "192.168.5.5", ErrInvalid},     // outside the discovery network
+		{"a/b", "10.0.0.9", ErrInvalid},          // bad name
+		{"bridge", "10.0.0.9", ErrInvalid},       // reserved
+		{"ok", "", ErrInvalid},                   // no host
+		{"ok", "10.0.0.9 x", ErrInvalid},         // bad host
 	}
 	for _, c := range cases {
 		if err := m.AddDevice(c.name, c.host); !errors.Is(err, c.want) {
@@ -111,8 +116,9 @@ func TestAddedDeviceStartsWhileRunning(t *testing.T) {
 	go func() { m.Run(ctx); close(done) }()
 	defer func() { cancel(); <-done }()
 
-	// The new device has no reachable host, so the loop reports it offline.
-	if err := m.AddDevice("kind2", "127.0.0.1:9"); err != nil {
+	// The fake remote cannot be updated, so the loop reports the device offline.
+	m.newRemote = func(string) Remote { return &fakeRemote{updateErr: errors.New("down")} }
+	if err := m.AddDevice("kind2", "10.0.0.2"); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { return len(mq.on("broadlink/kind2/available")) > 0 })

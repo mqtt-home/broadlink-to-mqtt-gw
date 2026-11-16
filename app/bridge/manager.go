@@ -68,6 +68,9 @@ type Manager struct {
 	runCtx context.Context // set by Run; devices added later start under it
 	wg     sync.WaitGroup
 
+	// newRemote builds the client for a device added at runtime (replaced in tests).
+	newRemote func(host string) Remote
+
 	// discover finds Broadlink devices in the LAN (replaced in tests).
 	discover func(context.Context, broadlink.DiscoverOptions) ([]broadlink.Found, error)
 }
@@ -88,6 +91,7 @@ func NewManager(cfg config.Config, mqttClient MQTTClient, discovery *hadiscovery
 		mqtt:         mqttClient,
 		discovery:    discovery,
 		discover:     broadlink.Discover,
+		newRemote:    func(host string) Remote { return &broadlink.Client{Host: host} },
 	}
 	for _, d := range cfg.Devices {
 		m.register(d)

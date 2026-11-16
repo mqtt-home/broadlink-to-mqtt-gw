@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -70,8 +71,8 @@ func (m *Manager) AddDevice(name, host string) error {
 	if err := config.ValidateDeviceName(name); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	if host == "" || strings.ContainsAny(host, " /#+") {
-		return fmt.Errorf("%w: host %q", ErrInvalid, host)
+	if err := m.checkHost(host); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 
 	m.mu.RLock()
@@ -91,6 +92,7 @@ func (m *Manager) AddDevice(name, host string) error {
 		return err
 	}
 	d := m.register(config.Device{Name: name, Host: host}, SourceUI)
+	d.Client = m.newRemote(host)
 	m.mu.Lock()
 	if m.runCtx != nil {
 		m.start(d)
@@ -98,6 +100,40 @@ func (m *Manager) AddDevice(name, host string) error {
 	m.mu.Unlock()
 	logger.Info("Device added", "device", name, "host", host)
 	return nil
+}
+
+// checkHost accepts only a literal IPv4 address (no port, no hostname) inside
+// the discovery networks - or, when none are configured, inside a network the
+// bridge is attached to. The UI has no login, so it must not be a way to make
+// the bridge send packets to arbitrary hosts.
+func (m *Manager) checkHost(host string) error {
+	ip, err := netip.ParseAddr(host)
+	if err != nil || !ip.Is4() {
+		return fmt.Errorf("host %q must be an IPv4 address", host)
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() || ip == netip.AddrFrom4([4]byte{255, 255, 255, 255}) {
+		return fmt.Errorf("host %s is not a device address", host)
+	}
+	var nets []netip.Prefix
+	for _, c := range m.cfg.Discovery.Networks {
+		if p, err := netip.ParsePrefix(c); err == nil {
+			nets = append(nets, p)
+		}
+	}
+	if len(nets) == 0 {
+		addrs, _ := net.InterfaceAddrs()
+		for _, a := range addrs {
+			if p, err := netip.ParsePrefix(a.String()); err == nil && p.Addr().Is4() {
+				nets = append(nets, p)
+			}
+		}
+	}
+	for _, p := range nets {
+		if p.Contains(ip) {
+			return nil
+		}
+	}
+	return fmt.Errorf("host %s is outside the discovery networks", host)
 }
 
 // RemoveDevice stops and forgets a device that was added in the UI, together

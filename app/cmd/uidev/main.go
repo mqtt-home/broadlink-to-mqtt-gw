@@ -61,6 +61,7 @@ func main() {
 		MQTT:                   config.MQTTConfig{Topic: "broadlink"},
 		PollingIntervalSeconds: 5,
 		LearnTimeoutSeconds:    30,
+		Discovery:              config.DiscoveryConfig{Networks: []string{"192.0.2.0/24"}},
 		Devices: []config.Device{{
 			Host: orDefault(*device, "sim"), Name: "wohnzimmer",
 			Codes: map[string][]byte{"tv_power": {0x26, 0, 1, 0, 0xAA}},
